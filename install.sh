@@ -1,12 +1,25 @@
 #!/bin/bash
-export PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-#Disable China
-wget http://iscn.kirito.moe/run.sh
-. ./run.sh
-if [[ $area == cn ]];then
-echo "Unable to install in china"
-exit
-fi
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+#=================================================================#
+#   System Required:  CentOS 6,7, Debian, Ubuntu                  #
+#   Description: One click Install ShadowsocksR Server            #
+#   Author: Sherlockwoo                                           #
+#   Thanks: @breakwa11 <https://twitter.com/breakwa11>            #
+#   Thanks: @Teddysun <i@teddysun.com>                            #
+#   Intro:  https://shadowsocks.be/9.html                         #
+#=================================================================#
+rm -f SSR
+clear
+echo -e "\033[34m================================================================\033[0m
+\033[31m                     欢迎使用shadowsocksR多用户管理一键脚本                         \033[0m
+\033[31m                        从现在开始，变成一只猫！                 \033[0m
+\033[31m                                                   By:Sherlockwoo        \033[0m
+\033[31m                            Starting Now...                             \033[0m
+\033[34m================================================================\033[0m";
+echo
+
+echo
 #Check Root
 [ $(id -u) != "0" ] && { echo "Error: You must be root to run this script"; exit 1; }
 #Check OS
@@ -66,7 +79,7 @@ fi
 #Install SSR and SSR-Bash
 cd /usr/local
 git clone https://github.com/shadowsocksr/shadowsocksr.git
-git clone https://github.com/FunctionClub/SSR-Bash-Python.git
+git clone https://github.com/Sherlockwoo/SSR-Bash-Python.git
 cd /usr/local/shadowsocksr
 bash initcfg.sh
 
@@ -82,35 +95,67 @@ popd
 ldconfig
 cd $workdir && rm -rf libsodium-$LIBSODIUM_VER.tar.gz libsodium-$LIBSODIUM_VER
 
-#Change CentOS7 Firewall
-if [[ ${OS} == CentOS && $CentOS_RHEL_version == 7 ]];then
-    systemctl stop firewalld.service
-    systemctl disable firewalld.service
-    yum install iptables-services -y
-    cat << EOF > /etc/sysconfig/iptables
-# sample configuration for iptables service
-# you can edit this manually or use system-config-firewall
-# please do not ask us to add additional ports/services to this default configuration
-*filter
-:INPUT ACCEPT [0:0]
-:FORWARD ACCEPT [0:0]
-:OUTPUT ACCEPT [0:0]
--A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
--A INPUT -p icmp -j ACCEPT
--A INPUT -i lo -j ACCEPT
--A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
--A INPUT -m state --state NEW -m tcp -p tcp --dport 80 -j ACCEPT
--A INPUT -m state --state NEW -m tcp -p tcp --dport 443 -j ACCEPT
--A INPUT -j REJECT --reject-with icmp-host-prohibited
--A FORWARD -j REJECT --reject-with icmp-host-prohibited
-COMMIT
-EOF
-systemctl restart iptables.service
-systemctl enable iptables.service
-fi
+ # Download libsodium file
+    if ! wget --no-check-certificate -O libsodium-1.0.12.tar.gz https://github.com/jedisct1/libsodium/releases/download/1.0.12/libsodium-1.0.12.tar.gz; then
+        echo "Failed to download libsodium-1.0.12.tar.gz!"
+        exit 1
+    fi
+    
+ # Install libsodium
+    if [ ! -f /usr/lib/libsodium.a ]; then
+        cd ${cur_dir}
+        tar zxf libsodium-1.0.12.tar.gz
+        cd libsodium-1.0.12
+        ./configure --prefix=/usr && make && make install
+        if [ $? -ne 0 ]; then
+            echo "libsodium install failed!"
+            install_cleanup
+            exit 1
+        fi
+    fi
+
+    ldconfig
+# Firewall set
+firewall_set(){
+    echo "firewall set start..."
+    if centosversion 6; then
+        /etc/init.d/iptables status > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            iptables -L -n | grep -i ${shadowsocksport} > /dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                iptables -I INPUT -m state --state NEW -m tcp -p tcp --dport ${shadowsocksport} -j ACCEPT
+                iptables -I INPUT -m state --state NEW -m udp -p udp --dport ${shadowsocksport} -j ACCEPT
+                /etc/init.d/iptables save
+                /etc/init.d/iptables restart
+            else
+                echo "port ${shadowsocksport} has been set up."
+            fi
+        else
+            echo "WARNING: iptables looks like shutdown or not installed, please manually set it if necessary."
+        fi
+    elif centosversion 7; then
+        systemctl status firewalld > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            firewall-cmd --permanent --zone=public --add-port=${shadowsocksport}/tcp
+            firewall-cmd --permanent --zone=public --add-port=${shadowsocksport}/udp
+            firewall-cmd --reload
+        else
+            echo "Firewalld looks like not running, try to start..."
+            systemctl start firewalld
+            if [ $? -eq 0 ]; then
+                firewall-cmd --permanent --zone=public --add-port=${shadowsocksport}/tcp
+                firewall-cmd --permanent --zone=public --add-port=${shadowsocksport}/udp
+                firewall-cmd --reload
+            else
+                echo "WARNING: Try to start firewalld failed. please enable port ${shadowsocksport} manually if necessary."
+            fi
+        fi
+    fi
+    echo "firewall set completed..."
+}
 
 #Install SSR-Bash Background
-wget -N --no-check-certificate -O /usr/local/bin/ssr https://raw.githubusercontent.com/FunctionClub/SSR-Bash-Python/master/ssr
+wget -N --no-check-certificate -O /usr/local/bin/ssr https://raw.githubusercontent.com/Sherlockwoo/SSR-Bash-Python/master/ssr
 chmod +x /usr/local/bin/ssr
 
 #Modify ShadowsocksR API
